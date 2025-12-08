@@ -1,0 +1,14 @@
+# Ambientes e dependências locais
+.venv/
+__pycache__/
+*.pyc
+
+# Arquivos de configuração sensíveis
+.env
+
+# Saídas geradas pelos scripts
+logs/
+outputs/
+downloads/
+*.bcp
+*.bcp.gz
