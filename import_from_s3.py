@@ -16,6 +16,23 @@ from botocore.exceptions import BotoCoreError, ClientError
 from dotenv import load_dotenv
 
 
+def str_to_bool(value: str, default: bool = False) -> bool:
+    """Converte strings comuns de verdade/falso em booleano."""
+
+    truthy = {"1", "true", "t", "yes", "y", "sim"}
+    falsy = {"0", "false", "f", "no", "n", "nao", "não"}
+
+    if value is None:
+        return default
+
+    lower = value.strip().lower()
+    if lower in truthy:
+        return True
+    if lower in falsy:
+        return False
+    return default
+
+
 def infer_table_name_from_file(filename: str) -> str:
     """Retorna o nome da tabela a partir do nome do arquivo .bcp."""
 
@@ -169,6 +186,7 @@ def run_bcp_import(
     password: str,
     file_path: str,
     field_terminator: str,
+    keep_identity: bool,
 ) -> None:
     """Importa os dados do arquivo .bcp para a tabela alvo."""
 
@@ -189,6 +207,9 @@ def run_bcp_import(
         "-t",
         field_terminator,
     ]
+
+    if keep_identity:
+        cmd.append("-E")
 
     logging.info("Importando via BCP: %s", " ".join(cmd))
 
@@ -228,6 +249,7 @@ def main():
         "DOWNLOAD_DIR", os.path.join(os.getcwd(), "downloads")
     )
     log_dir = os.getenv("LOG_DIR", os.path.join(os.getcwd(), "logs"))
+    keep_identity = str_to_bool(os.getenv("BCP_KEEP_IDENTITY"), default=True)
 
     required = [
         ("DB_SERVER", server),
@@ -271,6 +293,7 @@ def main():
         ],
     )
     logging.info("Log iniciado em %s", log_path)
+    logging.info("BCP_KEEP_IDENTITY=%s", keep_identity)
 
     try:
         object_key = resolve_object_key(
@@ -318,6 +341,7 @@ def main():
             password=password,
             file_path=str(local_file),
             field_terminator=field_terminator,
+            keep_identity=keep_identity,
         )
 
         logging.info(
