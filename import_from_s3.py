@@ -217,6 +217,7 @@ def run_bcp_import(
         cmd.extend(["-m", str(max_errors)])
 
     if error_file:
+        Path(error_file).parent.mkdir(parents=True, exist_ok=True)
         cmd.extend(["-e", error_file])
 
     logging.info("Importando via BCP: %s", " ".join(cmd))
@@ -226,9 +227,28 @@ def run_bcp_import(
     )
 
     if result.returncode != 0:
+        example_rows = ""
+        if error_file:
+            try:
+                lines = []
+                with open(error_file, "r", encoding="utf-8", errors="replace") as f:
+                    for _ in range(5):
+                        line = f.readline()
+                        if not line:
+                            break
+                        lines.append(line)
+                if lines:
+                    example_rows = (
+                        "\n\nExemplo de linhas com erro (arquivo %s):\n%s"
+                        % (error_file, "".join(lines))
+                    )
+            except OSError:
+                pass
+
         raise RuntimeError(
             f"Erro no BCP import ({result.returncode})\n"
             f"STDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}"
+            f"{example_rows}"
         )
 
 

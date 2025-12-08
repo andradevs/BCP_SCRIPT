@@ -27,7 +27,7 @@ cp .env.example .env
 Principais variáveis:
 
 - **Banco**: `DB_SERVER`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`.
-- **Ferramentas**: `BCP_PATH` (bcp), `SQLCMD_PATH` (sqlcmd), `FIELD_TERMINATOR` (padrão `;`), `BCP_KEEP_IDENTITY` (padrão `true` para manter valores de colunas IDENTITY nos imports), `BCP_MAX_ERRORS` (padrão `1` para interromper o bcp no primeiro erro e evitar cargas parciais) e `BCP_ERROR_FILE` (caminho para registrar linhas que falharam; se vazio cria um `.err` no diretório de logs).
+- **Ferramentas**: `BCP_PATH` (bcp), `SQLCMD_PATH` (sqlcmd), `FIELD_TERMINATOR` (padrão `;`), `BCP_KEEP_IDENTITY` (padrão `true` para manter valores de colunas IDENTITY nos imports), `BCP_MAX_ERRORS` (padrão `1` para interromper o bcp no primeiro erro e evitar cargas parciais) e `BCP_ERROR_FILE` (caminho para registrar linhas que falharam; se vazio cria um `.err` no diretório de logs e o script exibe as primeiras linhas em caso de falha).
 - **Diretórios**: `SCRIPTS_DIR`, `OUTPUT_DIR`, `DOWNLOAD_DIR`, `LOG_DIR`.
 - **S3**: `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_REGION`, `S3_BUCKET`, `S3_KEY` (prefixo para exportar/importar) e opcional `S3_OBJECT_KEY` para importar um arquivo específico.
 
