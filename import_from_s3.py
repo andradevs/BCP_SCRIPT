@@ -187,6 +187,8 @@ def run_bcp_import(
     file_path: str,
     field_terminator: str,
     keep_identity: bool,
+    max_errors: int,
+    error_file: Optional[str] = None,
 ) -> None:
     """Importa os dados do arquivo .bcp para a tabela alvo."""
 
@@ -210,6 +212,12 @@ def run_bcp_import(
 
     if keep_identity:
         cmd.append("-E")
+
+    if max_errors is not None:
+        cmd.extend(["-m", str(max_errors)])
+
+    if error_file:
+        cmd.extend(["-e", error_file])
 
     logging.info("Importando via BCP: %s", " ".join(cmd))
 
@@ -250,6 +258,22 @@ def main():
     )
     log_dir = os.getenv("LOG_DIR", os.path.join(os.getcwd(), "logs"))
     keep_identity = str_to_bool(os.getenv("BCP_KEEP_IDENTITY"), default=True)
+    max_errors_env = os.getenv("BCP_MAX_ERRORS")
+    error_file_env = os.getenv("BCP_ERROR_FILE")
+
+    try:
+        max_errors = int(max_errors_env) if max_errors_env is not None else 1
+        if max_errors < 0:
+            raise ValueError("BCP_MAX_ERRORS nao pode ser negativo")
+    except ValueError:
+        raise RuntimeError(
+            "BCP_MAX_ERRORS deve ser um numero inteiro maior ou igual a zero"
+        )
+
+    ts = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+    error_file_path = error_file_env or str(
+        Path(log_dir) / f"import_errors_{ts}.err"
+    )
 
     required = [
         ("DB_SERVER", server),
@@ -282,7 +306,6 @@ def main():
 
     # logging
     Path(log_dir).mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     log_path = Path(log_dir) / f"import_{ts}.log"
     logging.basicConfig(
         level=logging.INFO,
@@ -294,6 +317,8 @@ def main():
     )
     logging.info("Log iniciado em %s", log_path)
     logging.info("BCP_KEEP_IDENTITY=%s", keep_identity)
+    logging.info("BCP_MAX_ERRORS=%s", max_errors)
+    logging.info("BCP_ERROR_FILE=%s", error_file_path)
 
     try:
         object_key = resolve_object_key(
@@ -342,6 +367,8 @@ def main():
             file_path=str(local_file),
             field_terminator=field_terminator,
             keep_identity=keep_identity,
+            max_errors=max_errors,
+            error_file=error_file_path,
         )
 
         logging.info(
