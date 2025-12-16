@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import gzip
+import shutil
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -124,7 +125,8 @@ def maybe_decompress_gzip(path: Path) -> Path:
     target = path.with_suffix("")  # remove .gz
     logging.info("Descompactando '%s' para '%s'", path, target)
     with gzip.open(path, "rb") as src, open(target, "wb") as dst:
-        dst.write(src.read())
+        # Copia em streaming para evitar carregar arquivos grandes em memoria
+        shutil.copyfileobj(src, dst)
     return target
 
 
