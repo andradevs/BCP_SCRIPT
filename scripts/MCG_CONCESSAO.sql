@@ -1,12 +1,12 @@
 -- Referente a tabela do Resiliencia MCG_CONCESSAO
 
-select 
+select DISTINCT 
     c.CD_CONCESSAO ID_CONCESSAO
     ,c.NM_CONCESSAO NOME
-    ,ocp.ID_OSA ID_CONCESSAO_OSA
+    ,CC.CONCESSAO_ID_ARTESP ID_CONCESSAO_OSA
     ,'' ID_CONCESSAO_DBTRANS -- não achei nenhum campo 
-    ,isap.CD_CONCESSAO ID_CONCESSAO_SAP
-    ,c.IP_CONCESSAO IP_MENSAGERIA
+    ,CC.CODIGO_SAP ID_CONCESSAO_SAP
+    ,NULL IP_MENSAGERIA
     ,'' RAZAO_SOCIAL -- não sei ao certo qual campo entra aqui
     ,c.NU_CNPJ_CONCESSAO NU_CNPJ
     ,c.NM_LOGRADOURO
@@ -16,9 +16,7 @@ select
     ,getdate() DH_TIMESTAMP
 from 
     CONCESSAO c 
-inner join OSA_CONCESSAO_PRACA ocp on
-    ocp.CD_CONCESSAO = c.CD_CONCESSAO 
-inner join PRACA p on
-    p.CD_PRACA = ocp.CD_PRACA
-inner join INTEGRACAO_SAP isap on
-    isap.CD_PRACA = p.CD_PRACA
+INNER join CONCESSAO_COMPLEMENTO CC on
+    CC.CD_CONCESSAO = c.CD_CONCESSAO 
+INNER join PRACA p on
+    p.CD_CONCESSAO = C.CD_CONCESSAO

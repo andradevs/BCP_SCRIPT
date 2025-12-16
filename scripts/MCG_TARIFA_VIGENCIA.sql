@@ -7,10 +7,11 @@ select
     ,p.CD_CONCESSAO ID_CONCESSAO
     ,0 VERSAO -- Não achei campo para esse
     ,tv.DH_ATUALIZACAO DH_ATUALIZACAO
-    ,'' BL_EXPORTADO -- BL_LIBERADO?
+    ,TV.CD_EXPORTADO BL_EXPORTADO -- BL_LIBERADO?
     ,null DH_EXPORTADO
-    ,0 CD_STATUS
-    ,getdate() DH_TIMESTAMP
+    ,1 CD_STATUS
+    ,tv.DH_ATUALIZACAO DH_TIMESTAMP
 from TARIFA_VIGENCIA tv
 inner join PRACA p on
     tv.CD_PRACA = p.CD_PRACA
+where BL_LIBERADO = 1
