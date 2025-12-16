@@ -1,0 +1,22 @@
+-- Referente a tabela do Resiliencia MCG_TARIFA
+
+select
+    tc.CD_TARIFA_COMUM ID_TARIFA
+    ,tv.CD_TARIFA_VIGENCIA ID_TARIFA_VIGENCIA
+    ,p.CD_PRACA ID_LOCAL
+    ,tcv.CD_SENTIDO ID_SENTIDO
+    ,tcv.CD_CATEG ID_CATEGORIA
+    ,0 VALOR
+    ,0 VALOR_ADICIONAL
+    ,0 VERSAO
+    ,tcv.DH_ATUALIZACAO
+    ,null DH_EXPORTADO
+    , CD_STATUS
+    ,getdate() DH_TIMESTAMP
+from TARIFA_COMUM_VALOR tcv 
+inner join TARIFA_VIGENCIA tv on
+    tcv.CD_TARIFA_VIGENCIA = tv.CD_TARIFA_VIGENCIA
+inner join PRACA p on
+    tv.CD_PRACA = p.CD_PRACA
+inner join TARIFA_COMUM tc on
+    tc.CD_TARIFA_COMUM = tcv.CD_TARIFA_COMUM
