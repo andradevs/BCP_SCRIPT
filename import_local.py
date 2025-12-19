@@ -233,10 +233,10 @@ def main():
     load_dotenv()
 
     # DB
-    server = os.getenv("DB_SERVER")
-    database = os.getenv("DB_DATABASE")
-    username = os.getenv("DB_USERNAME")
-    password = os.getenv("DB_PASSWORD")
+    server = os.getenv("STAGE_DB_SERVER")
+    database = os.getenv("STAGE_DB_DATABASE")
+    username = os.getenv("STAGE_DB_USERNAME")
+    password = os.getenv("STAGE_DB_PASSWORD")
 
     # Importacao local
     local_import_dir = os.getenv(
@@ -268,10 +268,10 @@ def main():
     )
 
     required = [
-        ("DB_SERVER", server),
-        ("DB_DATABASE", database),
-        ("DB_USERNAME", username),
-        ("DB_PASSWORD", password),
+        ("STAGE_DB_SERVER", server),
+        ("STAGE_DB_DATABASE", database),
+        ("STAGE_DB_USERNAME", username),
+        ("STAGE_DB_PASSWORD", password),
     ]
 
     missing = [name for name, val in required if not val]

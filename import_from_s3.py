@@ -258,10 +258,10 @@ def main():
     load_dotenv()
 
     # DB
-    server = os.getenv("DB_SERVER")
-    database = os.getenv("DB_DATABASE")
-    username = os.getenv("DB_USERNAME")
-    password = os.getenv("DB_PASSWORD")
+    server = os.getenv("STAGE_DB_SERVER")
+    database = os.getenv("STAGE_DB_DATABASE")
+    username = os.getenv("STAGE_DB_USERNAME")
+    password = os.getenv("STAGE_DB_PASSWORD")
 
     # S3
     s3_access_key_id = os.getenv("S3_ACCESS_KEY_ID")
@@ -298,10 +298,10 @@ def main():
     )
 
     required = [
-        ("DB_SERVER", server),
-        ("DB_DATABASE", database),
-        ("DB_USERNAME", username),
-        ("DB_PASSWORD", password),
+        ("STAGE_DB_SERVER", server),
+        ("STAGE_DB_DATABASE", database),
+        ("STAGE_DB_USERNAME", username),
+        ("STAGE_DB_PASSWORD", password),
         ("S3_ACCESS_KEY_ID", s3_access_key_id),
         ("S3_SECRET_ACCESS_KEY", s3_secret_access_key),
         ("S3_REGION", s3_region),
