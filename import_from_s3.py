@@ -79,6 +79,7 @@ def ensure_staging_table(
     password: str,
     base_table_for_sql: str,
     staging_table_for_sql: str,
+    source_database: str,
 ) -> None:
     """Cria a tabela de staging se ela ainda nao existir."""
 
@@ -86,7 +87,7 @@ def ensure_staging_table(
         f"IF OBJECT_ID(N'{staging_table_for_sql}', 'U') IS NULL\n"
         "BEGIN\n"
         f"    SELECT TOP 0 * INTO {staging_table_for_sql} "
-        f"FROM [RESILIENCIA_BACKOFFICE]..{base_table_for_sql};\n"
+        f"FROM [{source_database}].{base_table_for_sql};\n"
         "END"
     )
     cmd = [
@@ -99,6 +100,9 @@ def ensure_staging_table(
         username,
         "-P",
         password,
+        "-b",
+        "-V",
+        "16",
         "-Q",
         query,
     ]
@@ -112,6 +116,7 @@ def ensure_staging_table(
     if result.returncode != 0:
         raise RuntimeError(
             f"Erro ao criar tabela staging ({result.returncode}). "
+            f"STDOUT: {result.stdout} "
             f"STDERR: {result.stderr}"
         )
 
@@ -203,6 +208,9 @@ def truncate_table(
         username,
         "-P",
         password,
+        "-b",
+        "-V",
+        "16",
         "-Q",
         f"TRUNCATE TABLE {table_for_sql}",
     ]
@@ -216,6 +224,7 @@ def truncate_table(
     if result.returncode != 0:
         raise RuntimeError(
             f"Erro ao truncar tabela ({result.returncode}). "
+            f"STDOUT: {result.stdout} "
             f"STDERR: {result.stderr}"
         )
 
@@ -335,6 +344,7 @@ def main():
     keep_identity = str_to_bool(os.getenv("BCP_KEEP_IDENTITY"), default=True)
     max_errors_env = os.getenv("BCP_MAX_ERRORS")
     error_file_env = os.getenv("BCP_ERROR_FILE")
+    source_database = os.getenv("SOURCE_DB_DATABASE", "RESILIENCIA_BACKOFFICE")
 
     try:
         max_errors = int(max_errors_env) if max_errors_env is not None else 1
@@ -394,6 +404,7 @@ def main():
     logging.info("BCP_KEEP_IDENTITY=%s", keep_identity)
     logging.info("BCP_MAX_ERRORS=%s", max_errors)
     logging.info("BCP_ERROR_FILE=%s", error_file_path)
+    logging.info("SOURCE_DB_DATABASE=%s", source_database)
 
     try:
         object_key = resolve_object_key(
@@ -434,6 +445,7 @@ def main():
             password=password,
             base_table_for_sql=base_table_for_sql,
             staging_table_for_sql=table_for_sql,
+            source_database=source_database,
         )
 
         confirm_truncate(table_for_sql)
