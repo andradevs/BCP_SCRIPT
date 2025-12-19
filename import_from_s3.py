@@ -86,7 +86,7 @@ def ensure_staging_table(
         f"IF OBJECT_ID(N'{staging_table_for_sql}', 'U') IS NULL\n"
         "BEGIN\n"
         f"    SELECT TOP 0 * INTO {staging_table_for_sql} "
-        f"FROM {base_table_for_sql};\n"
+        f"FROM [RESILIENCIA_BACKOFFICE]..{base_table_for_sql};\n"
         "END"
     )
     cmd = [
