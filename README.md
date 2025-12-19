@@ -31,6 +31,7 @@ Principais variaveis:
 - Diretorios: `SCRIPTS_DIR`, `OUTPUT_DIR`, `DOWNLOAD_DIR`, `LOG_DIR`, `LOCAL_IMPORT_DIR` (padrao `./Subida`).
 - S3: `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_REGION`, `S3_BUCKET`, `S3_KEY` (prefixo para exportar/importar) e opcional `S3_OBJECT_KEY` para importar um arquivo especifico.
 - Importacao local: opcional `LOCAL_IMPORT_FILE` para apontar um arquivo especifico dentro de `LOCAL_IMPORT_DIR`.
+- Merge: `MERGE_SCRIPTS_DIR` (padrao `./scripts_merge`) e `MERGE_LOG_DIR` (padrao `./logs/merge`).
 
 Veja o `.env.example` para a lista completa.
 
@@ -71,6 +72,19 @@ python import_local.py
 ```
 
 O script confirma o `TRUNCATE TABLE` antes de importar.
+
+### Merge
+
+1. Coloque os arquivos `.sql` de merge no diretorio configurado em `MERGE_SCRIPTS_DIR` (padrao `./scripts_merge`).
+2. Confirme as variaveis de conexao (`DB_*`) e o `SQLCMD_PATH`.
+3. Execute:
+
+```bash
+python merge.py                       # executa todos os .sql do diretorio
+python merge.py --scripts a.sql b.sql  # executa apenas os arquivos indicados
+```
+
+Os logs ficam em `MERGE_LOG_DIR`.
 
 ## Dicas
 
