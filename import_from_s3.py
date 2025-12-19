@@ -45,11 +45,8 @@ def infer_table_name_from_file(filename: str) -> str:
     return match.group(1) if match else stem
 
 
-def normalize_table_identifiers(raw_table: str) -> tuple[str, str]:
-    """
-    Normaliza o nome da tabela para uso no TRUNCATE (com colchetes)
-    e no bcp (schema.nome).
-    """
+def parse_table_name(raw_table: str) -> tuple[str, str]:
+    """Retorna schema e tabela a partir de um identificador bruto."""
 
     cleaned = raw_table.strip().strip("[]")
 
@@ -58,9 +55,65 @@ def normalize_table_identifiers(raw_table: str) -> tuple[str, str]:
     else:
         schema, table = "dbo", cleaned
 
+    return schema, table
+
+
+def normalize_table_identifiers(raw_table: str) -> tuple[str, str]:
+    """
+    Normaliza o nome da tabela para uso no TRUNCATE (com colchetes)
+    e no bcp (schema.nome).
+    """
+
+    schema, table = parse_table_name(raw_table)
+
     bracketed = f"[{schema}].[{table}]"
     bcp_name = f"{schema}.{table}"
     return bracketed, bcp_name
+
+
+def ensure_staging_table(
+    sqlcmd_path: str,
+    server: str,
+    database: str,
+    username: str,
+    password: str,
+    base_table_for_sql: str,
+    staging_table_for_sql: str,
+) -> None:
+    """Cria a tabela de staging se ela ainda nao existir."""
+
+    query = (
+        f"IF OBJECT_ID(N'{staging_table_for_sql}', 'U') IS NULL\n"
+        "BEGIN\n"
+        f"    SELECT TOP 0 * INTO {staging_table_for_sql} "
+        f"FROM {base_table_for_sql};\n"
+        "END"
+    )
+    cmd = [
+        sqlcmd_path,
+        "-S",
+        server,
+        "-d",
+        database,
+        "-U",
+        username,
+        "-P",
+        password,
+        "-Q",
+        query,
+    ]
+
+    logging.info("Garantindo tabela staging: %s", " ".join(cmd))
+
+    result = subprocess.run(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Erro ao criar tabela staging ({result.returncode}). "
+            f"STDERR: {result.stderr}"
+        )
 
 
 def resolve_object_key(
@@ -360,12 +413,27 @@ def main():
         local_file = maybe_decompress_gzip(local_file)
 
         raw_table = infer_table_name_from_file(local_file.name)
-        table_for_sql, table_for_bcp = normalize_table_identifiers(raw_table)
+        schema, table = parse_table_name(raw_table)
+        staging_raw_table = f"{schema}.{table}_STAGING"
+        table_for_sql, table_for_bcp = normalize_table_identifiers(
+            staging_raw_table
+        )
+        base_table_for_sql, _ = normalize_table_identifiers(raw_table)
         logging.info(
             "Tabela inferida: %s (bcp: %s) a partir de %s",
             table_for_sql,
             table_for_bcp,
             local_file.name,
+        )
+
+        ensure_staging_table(
+            sqlcmd_path=sqlcmd_path,
+            server=server,
+            database=database,
+            username=username,
+            password=password,
+            base_table_for_sql=base_table_for_sql,
+            staging_table_for_sql=table_for_sql,
         )
 
         confirm_truncate(table_for_sql)
