@@ -132,9 +132,7 @@ def resolve_object_key(
     if explicit_key:
         return explicit_key
 
-    latest_key = None
-    latest_modified = None
-
+    objects = []
     paginator = s3_client.get_paginator("list_objects_v2")
 
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
@@ -142,16 +140,48 @@ def resolve_object_key(
             key_lower = obj["Key"].lower()
             if not (key_lower.endswith(".bcp") or key_lower.endswith(".bcp.gz")):
                 continue
-            if latest_modified is None or obj["LastModified"] > latest_modified:
-                latest_key = obj["Key"]
-                latest_modified = obj["LastModified"]
+            objects.append(obj)
 
-    if not latest_key:
+    if not objects:
         raise RuntimeError(
             f"Nenhum arquivo .bcp encontrado em s3://{bucket}/{prefix}"
         )
 
-    return latest_key
+    objects.sort(key=lambda item: item["LastModified"], reverse=True)
+
+    logging.info("Arquivos disponiveis para importacao:")
+    for idx, obj in enumerate(objects, start=1):
+        logging.info(
+            "%s) %s (modificado: %s, tamanho: %s bytes)",
+            idx,
+            obj["Key"],
+            obj["LastModified"],
+            obj.get("Size", 0),
+        )
+
+    prompt = (
+        "Escolha o numero do arquivo para importar "
+        f"(1-{len(objects)}) [1]: "
+    )
+    selection = input(prompt).strip()
+
+    if selection:
+        try:
+            index = int(selection)
+        except ValueError:
+            raise RuntimeError(
+                f"Selecao invalida: '{selection}'. Use um numero da lista."
+            )
+        if index < 1 or index > len(objects):
+            raise RuntimeError(
+                f"Selecao fora do intervalo: {index}. "
+                f"Escolha entre 1 e {len(objects)}."
+            )
+        chosen = objects[index - 1]
+    else:
+        chosen = objects[0]
+
+    return chosen["Key"]
 
 
 def download_bcp(
