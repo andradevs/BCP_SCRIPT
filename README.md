@@ -26,12 +26,14 @@ cp .env.example .env
 
 Principais variaveis:
 
-- Banco: `DB_SERVER`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`.
+- Banco (exportacao): `DB_SERVER`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`.
+- Banco (stage): `STAGE_DB_SERVER`, `STAGE_DB_DATABASE`, `STAGE_DB_USERNAME`, `STAGE_DB_PASSWORD`.
+- Banco (destino): `DEST_DB_SERVER`, `DEST_DB_DATABASE`, `DEST_DB_USERNAME`, `DEST_DB_PASSWORD`.
 - Ferramentas: `BCP_PATH` (bcp), `SQLCMD_PATH` (sqlcmd), `FIELD_TERMINATOR` (padrao `;`), `BCP_KEEP_IDENTITY` (padrao `true`), `BCP_MAX_ERRORS` (padrao `1` para interromper no primeiro erro) e `BCP_ERROR_FILE` (arquivo de erros do bcp; se vazio cria um `.err` em `LOG_DIR`).
 - Diretorios: `SCRIPTS_DIR`, `OUTPUT_DIR`, `DOWNLOAD_DIR`, `LOG_DIR`, `LOCAL_IMPORT_DIR` (padrao `./Subida`).
 - S3: `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_REGION`, `S3_BUCKET`, `S3_KEY` (prefixo para exportar/importar) e opcional `S3_OBJECT_KEY` para importar um arquivo especifico.
-- Importacao local: opcional `LOCAL_IMPORT_FILE` para apontar um arquivo especifico dentro de `LOCAL_IMPORT_DIR`.
-- Merge: `MERGE_SCRIPTS_DIR` (padrao `./scripts_merge`) e `MERGE_LOG_DIR` (padrao `./logs/merge`).
+    - Importacao local: opcional `LOCAL_IMPORT_FILE` para apontar um arquivo especifico dentro de `LOCAL_IMPORT_DIR`.
+    - Merge: `MERGE_SCRIPTS_DIR` (padrao `./scripts_merge`) e `MERGE_LOG_DIR` (padrao `./logs/merge`).
 
 Veja o `.env.example` para a lista completa.
 
@@ -49,9 +51,9 @@ python main.py --scripts a.sql b.sql  # executa apenas os arquivos indicados
 
 O script gera arquivos `.bcp`, compacta em `.gz` e envia para `s3://$S3_BUCKET/$S3_KEY/<arquivo>.bcp.gz`. Logs ficam em `LOG_DIR`.
 
-### Importar do S3 para o banco
+### Importar do S3 para o banco (stage)
 
-1. Confirme as variaveis de conexao (`DB_*`) e de S3 (`S3_*`).
+1. Confirme as variaveis de conexao do stage (`STAGE_DB_*`) e de S3 (`S3_*`).
 2. Opcional: defina `S3_OBJECT_KEY` para usar um arquivo especifico; caso contrario, o script buscara o `.bcp/.bcp.gz` mais recente dentro de `S3_KEY`.
 3. Execute:
 
@@ -61,7 +63,7 @@ python import_from_s3.py
 
 Durante a execucao sera exibida uma confirmacao antes de `TRUNCATE TABLE` na tabela inferida a partir do nome do arquivo. O arquivo e baixado para `DOWNLOAD_DIR`, descompactado se necessario e importado via `bcp`.
 
-### Importar arquivo local (pasta Subida)
+### Importar arquivo local (pasta Subida) no stage
 
 1. Coloque o arquivo `.bcp` (ou `.bcp.gz`) na pasta definida em `LOCAL_IMPORT_DIR` (padrao `./Subida`). O nome do arquivo deve comecar com o nome da tabela, por exemplo `dbo.SUA_TABELA_20240101_120000.bcp`.
 2. Se houver mais de um arquivo na pasta, defina `LOCAL_IMPORT_FILE` para escolher um especifico; caso contrario o arquivo mais recente sera usado.
@@ -73,10 +75,11 @@ python import_local.py
 
 O script confirma o `TRUNCATE TABLE` antes de importar.
 
-### Merge
+### Merge (destino)
 
 1. Coloque os arquivos `.sql` de merge no diretorio configurado em `MERGE_SCRIPTS_DIR` (padrao `./scripts_merge`).
-2. Confirme as variaveis de conexao (`DB_*`) e o `SQLCMD_PATH`.
+2. Confirme as variaveis de conexao do destino (`DEST_DB_*`) e o `SQLCMD_PATH`. O script SQL
+   pode tratar a conexao entre Stage e Destino, se necessario.
 3. Execute:
 
 ```bash
