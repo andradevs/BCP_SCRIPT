@@ -45,11 +45,8 @@ def infer_table_name_from_file(filename: str) -> str:
     return match.group(1) if match else stem
 
 
-def normalize_table_identifiers(raw_table: str) -> tuple[str, str]:
-    """
-    Normaliza o nome da tabela para uso no TRUNCATE (com colchetes)
-    e no bcp (schema.nome).
-    """
+def parse_table_name(raw_table: str) -> tuple[str, str]:
+    """Retorna schema e tabela a partir de um identificador bruto."""
 
     cleaned = raw_table.strip().strip("[]")
 
@@ -58,9 +55,70 @@ def normalize_table_identifiers(raw_table: str) -> tuple[str, str]:
     else:
         schema, table = "dbo", cleaned
 
+    return schema, table
+
+
+def normalize_table_identifiers(raw_table: str) -> tuple[str, str]:
+    """
+    Normaliza o nome da tabela para uso no TRUNCATE (com colchetes)
+    e no bcp (schema.nome).
+    """
+
+    schema, table = parse_table_name(raw_table)
+
     bracketed = f"[{schema}].[{table}]"
     bcp_name = f"{schema}.{table}"
     return bracketed, bcp_name
+
+
+def ensure_staging_table(
+    sqlcmd_path: str,
+    server: str,
+    database: str,
+    username: str,
+    password: str,
+    base_table_for_sql: str,
+    staging_table_for_sql: str,
+    source_database: str,
+) -> None:
+    """Cria a tabela de staging se ela ainda nao existir."""
+
+    query = (
+        f"IF OBJECT_ID(N'{staging_table_for_sql}', 'U') IS NULL\n"
+        "BEGIN\n"
+        f"    SELECT TOP 0 * INTO {staging_table_for_sql} "
+        f"FROM [{source_database}].{base_table_for_sql};\n"
+        "END"
+    )
+    cmd = [
+        sqlcmd_path,
+        "-S",
+        server,
+        "-d",
+        database,
+        "-U",
+        username,
+        "-P",
+        password,
+        "-b",
+        "-V",
+        "16",
+        "-Q",
+        query,
+    ]
+
+    logging.info("Garantindo tabela staging: %s", " ".join(cmd))
+
+    result = subprocess.run(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Erro ao criar tabela staging ({result.returncode}). "
+            f"STDOUT: {result.stdout} "
+            f"STDERR: {result.stderr}"
+        )
 
 
 def resolve_object_key(
@@ -74,9 +132,7 @@ def resolve_object_key(
     if explicit_key:
         return explicit_key
 
-    latest_key = None
-    latest_modified = None
-
+    objects = []
     paginator = s3_client.get_paginator("list_objects_v2")
 
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
@@ -84,16 +140,48 @@ def resolve_object_key(
             key_lower = obj["Key"].lower()
             if not (key_lower.endswith(".bcp") or key_lower.endswith(".bcp.gz")):
                 continue
-            if latest_modified is None or obj["LastModified"] > latest_modified:
-                latest_key = obj["Key"]
-                latest_modified = obj["LastModified"]
+            objects.append(obj)
 
-    if not latest_key:
+    if not objects:
         raise RuntimeError(
             f"Nenhum arquivo .bcp encontrado em s3://{bucket}/{prefix}"
         )
 
-    return latest_key
+    objects.sort(key=lambda item: item["LastModified"], reverse=True)
+
+    logging.info("Arquivos disponiveis para importacao:")
+    for idx, obj in enumerate(objects, start=1):
+        logging.info(
+            "%s) %s (modificado: %s, tamanho: %s bytes)",
+            idx,
+            obj["Key"],
+            obj["LastModified"],
+            obj.get("Size", 0),
+        )
+
+    prompt = (
+        "Escolha o numero do arquivo para importar "
+        f"(1-{len(objects)}) [1]: "
+    )
+    selection = input(prompt).strip()
+
+    if selection:
+        try:
+            index = int(selection)
+        except ValueError:
+            raise RuntimeError(
+                f"Selecao invalida: '{selection}'. Use um numero da lista."
+            )
+        if index < 1 or index > len(objects):
+            raise RuntimeError(
+                f"Selecao fora do intervalo: {index}. "
+                f"Escolha entre 1 e {len(objects)}."
+            )
+        chosen = objects[index - 1]
+    else:
+        chosen = objects[0]
+
+    return chosen["Key"]
 
 
 def download_bcp(
@@ -150,6 +238,9 @@ def truncate_table(
         username,
         "-P",
         password,
+        "-b",
+        "-V",
+        "16",
         "-Q",
         f"TRUNCATE TABLE {table_for_sql}",
     ]
@@ -163,6 +254,7 @@ def truncate_table(
     if result.returncode != 0:
         raise RuntimeError(
             f"Erro ao truncar tabela ({result.returncode}). "
+            f"STDOUT: {result.stdout} "
             f"STDERR: {result.stderr}"
         )
 
@@ -258,10 +350,10 @@ def main():
     load_dotenv()
 
     # DB
-    server = os.getenv("DB_SERVER")
-    database = os.getenv("DB_DATABASE")
-    username = os.getenv("DB_USERNAME")
-    password = os.getenv("DB_PASSWORD")
+    server = os.getenv("STAGE_DB_SERVER")
+    database = os.getenv("STAGE_DB_DATABASE")
+    username = os.getenv("STAGE_DB_USERNAME")
+    password = os.getenv("STAGE_DB_PASSWORD")
 
     # S3
     s3_access_key_id = os.getenv("S3_ACCESS_KEY_ID")
@@ -282,6 +374,7 @@ def main():
     keep_identity = str_to_bool(os.getenv("BCP_KEEP_IDENTITY"), default=True)
     max_errors_env = os.getenv("BCP_MAX_ERRORS")
     error_file_env = os.getenv("BCP_ERROR_FILE")
+    source_database = os.getenv("SOURCE_DB_DATABASE", "RESILIENCIA_BACKOFFICE")
 
     try:
         max_errors = int(max_errors_env) if max_errors_env is not None else 1
@@ -298,10 +391,10 @@ def main():
     )
 
     required = [
-        ("DB_SERVER", server),
-        ("DB_DATABASE", database),
-        ("DB_USERNAME", username),
-        ("DB_PASSWORD", password),
+        ("STAGE_DB_SERVER", server),
+        ("STAGE_DB_DATABASE", database),
+        ("STAGE_DB_USERNAME", username),
+        ("STAGE_DB_PASSWORD", password),
         ("S3_ACCESS_KEY_ID", s3_access_key_id),
         ("S3_SECRET_ACCESS_KEY", s3_secret_access_key),
         ("S3_REGION", s3_region),
@@ -341,6 +434,7 @@ def main():
     logging.info("BCP_KEEP_IDENTITY=%s", keep_identity)
     logging.info("BCP_MAX_ERRORS=%s", max_errors)
     logging.info("BCP_ERROR_FILE=%s", error_file_path)
+    logging.info("SOURCE_DB_DATABASE=%s", source_database)
 
     try:
         object_key = resolve_object_key(
@@ -360,12 +454,28 @@ def main():
         local_file = maybe_decompress_gzip(local_file)
 
         raw_table = infer_table_name_from_file(local_file.name)
-        table_for_sql, table_for_bcp = normalize_table_identifiers(raw_table)
+        schema, table = parse_table_name(raw_table)
+        staging_raw_table = f"{schema}.{table}_STAGING"
+        table_for_sql, table_for_bcp = normalize_table_identifiers(
+            staging_raw_table
+        )
+        base_table_for_sql, _ = normalize_table_identifiers(raw_table)
         logging.info(
             "Tabela inferida: %s (bcp: %s) a partir de %s",
             table_for_sql,
             table_for_bcp,
             local_file.name,
+        )
+
+        ensure_staging_table(
+            sqlcmd_path=sqlcmd_path,
+            server=server,
+            database=database,
+            username=username,
+            password=password,
+            base_table_for_sql=base_table_for_sql,
+            staging_table_for_sql=table_for_sql,
+            source_database=source_database,
         )
 
         confirm_truncate(table_for_sql)

@@ -8,13 +8,13 @@ import sys
 import gzip
 import shutil
 import logging
-from datetime import datetime
 from pathlib import Path
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from dotenv import load_dotenv
 
+from utils import load_query_from_file, setup_logging
 
 def run_bcp_export(
     server: str,
@@ -105,38 +105,6 @@ def upload_to_s3(
     logging.info("Upload concluido com sucesso.")
 
 
-def load_query_from_file(path: str) -> str:
-    """Le e retorna o conteudo de um arquivo .sql como string unica."""
-    if not os.path.isfile(path):
-        raise FileNotFoundError(f"O arquivo de query '{path}' nao existe.")
-    with open(path, "r", encoding="utf-8") as f:
-        sql = f.read().strip()
-    if not sql:
-        raise ValueError(f"O arquivo '{path}' esta vazio.")
-    logging.info("Query carregada de '%s'", path)
-    return sql
-
-
-def setup_logging(log_dir: str) -> Path:
-    """Configura logging para arquivo e console."""
-
-    Path(log_dir).mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-    log_path = Path(log_dir) / f"export_{ts}.log"
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        handlers=[
-            logging.FileHandler(log_path, encoding="utf-8"),
-            logging.StreamHandler(sys.stdout),
-        ],
-    )
-
-    logging.info("Log iniciado em %s", log_path)
-    return log_path
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="Exporta queries .sql via BCP e envia o .bcp.gz ao S3."
@@ -154,7 +122,7 @@ def main():
     output_dir = os.getenv("OUTPUT_DIR", os.getcwd())
     log_dir = os.getenv("LOG_DIR", os.path.join(os.getcwd(), "logs"))
 
-    setup_logging(log_dir)
+    setup_logging(log_dir, "export")
 
     # parametros SQL
     server = os.getenv("DB_SERVER")

@@ -44,11 +44,8 @@ def infer_table_name_from_file(filename: str) -> str:
     return match.group(1) if match else stem
 
 
-def normalize_table_identifiers(raw_table: str) -> tuple[str, str]:
-    """
-    Normaliza o nome da tabela para uso no TRUNCATE (com colchetes)
-    e no bcp (schema.nome).
-    """
+def parse_table_name(raw_table: str) -> tuple[str, str]:
+    """Retorna schema e tabela a partir de um identificador bruto."""
 
     cleaned = raw_table.strip().strip("[]")
 
@@ -57,9 +54,70 @@ def normalize_table_identifiers(raw_table: str) -> tuple[str, str]:
     else:
         schema, table = "dbo", cleaned
 
+    return schema, table
+
+
+def normalize_table_identifiers(raw_table: str) -> tuple[str, str]:
+    """
+    Normaliza o nome da tabela para uso no TRUNCATE (com colchetes)
+    e no bcp (schema.nome).
+    """
+
+    schema, table = parse_table_name(raw_table)
+
     bracketed = f"[{schema}].[{table}]"
     bcp_name = f"{schema}.{table}"
     return bracketed, bcp_name
+
+
+def ensure_staging_table(
+    sqlcmd_path: str,
+    server: str,
+    database: str,
+    username: str,
+    password: str,
+    base_table_for_sql: str,
+    staging_table_for_sql: str,
+    source_database: str,
+) -> None:
+    """Cria a tabela de staging se ela ainda nao existir."""
+
+    query = (
+        f"IF OBJECT_ID(N'{staging_table_for_sql}', 'U') IS NULL\n"
+        "BEGIN\n"
+        f"    SELECT TOP 0 * INTO {staging_table_for_sql} "
+        f"FROM [{source_database}].{base_table_for_sql};\n"
+        "END"
+    )
+    cmd = [
+        sqlcmd_path,
+        "-S",
+        server,
+        "-d",
+        database,
+        "-U",
+        username,
+        "-P",
+        password,
+        "-b",
+        "-V",
+        "16",
+        "-Q",
+        query,
+    ]
+
+    logging.info("Garantindo tabela staging: %s", " ".join(cmd))
+
+    result = subprocess.run(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Erro ao criar tabela staging ({result.returncode}). "
+            f"STDOUT: {result.stdout} "
+            f"STDERR: {result.stderr}"
+        )
 
 
 def resolve_local_bcp(local_dir: str, explicit_file: Optional[str]) -> Path:
@@ -125,6 +183,9 @@ def truncate_table(
         username,
         "-P",
         password,
+        "-b",
+        "-V",
+        "16",
         "-Q",
         f"TRUNCATE TABLE {table_for_sql}",
     ]
@@ -138,6 +199,7 @@ def truncate_table(
     if result.returncode != 0:
         raise RuntimeError(
             f"Erro ao truncar tabela ({result.returncode}). "
+            f"STDOUT: {result.stdout} "
             f"STDERR: {result.stderr}"
         )
 
@@ -233,10 +295,10 @@ def main():
     load_dotenv()
 
     # DB
-    server = os.getenv("DB_SERVER")
-    database = os.getenv("DB_DATABASE")
-    username = os.getenv("DB_USERNAME")
-    password = os.getenv("DB_PASSWORD")
+    server = os.getenv("STAGE_DB_SERVER")
+    database = os.getenv("STAGE_DB_DATABASE")
+    username = os.getenv("STAGE_DB_USERNAME")
+    password = os.getenv("STAGE_DB_PASSWORD")
 
     # Importacao local
     local_import_dir = os.getenv(
@@ -252,6 +314,7 @@ def main():
     keep_identity = str_to_bool(os.getenv("BCP_KEEP_IDENTITY"), default=True)
     max_errors_env = os.getenv("BCP_MAX_ERRORS")
     error_file_env = os.getenv("BCP_ERROR_FILE")
+    source_database = os.getenv("SOURCE_DB_DATABASE", "RESILIENCIA_BACKOFFICE")
 
     try:
         max_errors = int(max_errors_env) if max_errors_env is not None else 1
@@ -268,10 +331,10 @@ def main():
     )
 
     required = [
-        ("DB_SERVER", server),
-        ("DB_DATABASE", database),
-        ("DB_USERNAME", username),
-        ("DB_PASSWORD", password),
+        ("STAGE_DB_SERVER", server),
+        ("STAGE_DB_DATABASE", database),
+        ("STAGE_DB_USERNAME", username),
+        ("STAGE_DB_PASSWORD", password),
     ]
 
     missing = [name for name, val in required if not val]
@@ -295,6 +358,7 @@ def main():
     logging.info("BCP_KEEP_IDENTITY=%s", keep_identity)
     logging.info("BCP_MAX_ERRORS=%s", max_errors)
     logging.info("BCP_ERROR_FILE=%s", error_file_path)
+    logging.info("SOURCE_DB_DATABASE=%s", source_database)
 
     try:
         local_file = resolve_local_bcp(
@@ -305,12 +369,28 @@ def main():
         local_file = maybe_decompress_gzip(local_file)
 
         raw_table = infer_table_name_from_file(local_file.name)
-        table_for_sql, table_for_bcp = normalize_table_identifiers(raw_table)
+        schema, table = parse_table_name(raw_table)
+        staging_raw_table = f"{schema}.{table}_STAGING"
+        table_for_sql, table_for_bcp = normalize_table_identifiers(
+            staging_raw_table
+        )
+        base_table_for_sql, _ = normalize_table_identifiers(raw_table)
         logging.info(
             "Tabela inferida: %s (bcp: %s) a partir de %s",
             table_for_sql,
             table_for_bcp,
             local_file.name,
+        )
+
+        ensure_staging_table(
+            sqlcmd_path=sqlcmd_path,
+            server=server,
+            database=database,
+            username=username,
+            password=password,
+            base_table_for_sql=base_table_for_sql,
+            staging_table_for_sql=table_for_sql,
+            source_database=source_database,
         )
 
         confirm_truncate(table_for_sql)
